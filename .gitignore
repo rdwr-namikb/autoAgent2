@@ -1,0 +1,36 @@
+# Environment & Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# FAISS / RAG memory index (generated at runtime)
+agent_memory_index/
+
+# Run logs & results (generated at runtime)
+learning_history.json
+learning_history_langgraph.json
+simulation_results.json
+file.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files with hardcoded keys
+test_api_key.py

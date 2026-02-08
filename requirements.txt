@@ -1,0 +1,25 @@
+# LangChain Core Libraries
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+
+# LangGraph (for the graph-based learning agent)
+langgraph>=0.2.0
+
+# Vector Store
+faiss-cpu>=1.8.0
+
+# Numerical
+numpy>=1.26.0
+
+# HTTP Server Dependencies
+fastapi>=0.115.0
+uvicorn>=0.32.0
+
+# HTTP Client
+requests>=2.32.0
+httpx>=0.25.0
+
+# Environment Variables
+python-dotenv>=1.0.0
