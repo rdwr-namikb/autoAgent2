@@ -16,10 +16,8 @@ env/
 agent_memory_index/
 
 # Run logs & results (generated at runtime)
-learning_history.json
-learning_history_langgraph.json
-simulation_results.json
-file.txt
+*.json
+!requirements.json
 
 # IDE
 .vscode/
@@ -31,6 +29,3 @@ file.txt
 # OS
 .DS_Store
 Thumbs.db
-
-# Test files with hardcoded keys
-test_api_key.py
