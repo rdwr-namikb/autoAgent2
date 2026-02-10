@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoAgent</title>
+<style>
+  :root {
+    --bg-main: #0b141a;
+    --bg-chat: #0b141a;
+    --bg-header: #1f2c34;
+    --bg-sent: #005c4b;
+    --bg-received: #1f2c34;
+    --bg-status: rgba(255,255,255,0.06);
+    --text-primary: #e9edef;
+    --text-secondary: #8696a0;
+    --text-bubble: #e9edef;
+    --text-timestamp: #8696a0;
+    --accent: #00a884;
+    --accent-hover: #06cf9c;
+    --border: #2a3942;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --progress-track: #2a3942;
+    --progress-fill: #00a884;
+    --shadow: rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────────────── */
+  .header {
+    background: var(--bg-header);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .header-avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px; color: #fff;
+    flex-shrink: 0;
+  }
+  .header-info { flex: 1; min-width: 0; }
+  .header-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+  .header-subtitle {
+    font-size: 12px; color: var(--text-secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ── Progress Bar ───────────────────────────────── */
+  .progress-bar-wrap {
+    background: var(--bg-header);
+    padding: 0 20px 10px;
+    flex-shrink: 0;
+    display: none;
+  }
+  .progress-bar-wrap.visible { display: block; }
+  .progress-labels {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;
+  }
+  .progress-labels span:last-child { font-variant-numeric: tabular-nums; }
+  .progress-track {
+    height: 4px; border-radius: 2px; background: var(--progress-track);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--progress-fill);
+    border-radius: 2px; width: 0%; transition: width 0.4s ease;
+  }
+
+  /* ── Chat area ──────────────────────────────────── */
+  .chat {
+    flex: 1; overflow-y: auto; padding: 12px 60px;
+    display: flex; flex-direction: column; gap: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    background: var(--bg-chat);
+    /* WhatsApp doodle pattern (subtle) */
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5 Q35 15 30 25 Q25 15 30 5z' fill='%23ffffff' opacity='0.012'/%3E%3Cpath d='M10 35 Q15 45 10 55 Q5 45 10 35z' fill='%23ffffff' opacity='0.012'/%3E%3Cpath d='M50 35 Q55 45 50 55 Q45 45 50 35z' fill='%23ffffff' opacity='0.012'/%3E%3C/svg%3E");
+  }
+  .chat::-webkit-scrollbar { width: 6px; }
+  .chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Bubbles ────────────────────────────────────── */
+  .bubble {
+    max-width: 65%;
+    padding: 8px 12px 6px;
+    border-radius: 8px;
+    position: relative;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    line-height: 1.45;
+    font-size: 14px;
+    color: var(--text-bubble);
+    box-shadow: 0 1px 1px var(--shadow);
+  }
+  .bubble.sent {
+    align-self: flex-end;
+    background: var(--bg-sent);
+    border-top-right-radius: 0;
+  }
+  .bubble.received {
+    align-self: flex-start;
+    background: var(--bg-received);
+    border-top-left-radius: 0;
+  }
+  .bubble .sender {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+    display: block;
+  }
+  .bubble.sent .sender { color: #53bdeb; }
+  .bubble.received .sender { color: #06cf9c; }
+  .bubble .meta {
+    display: flex; justify-content: flex-end; gap: 6px;
+    font-size: 11px; color: var(--text-timestamp);
+    margin-top: 4px;
+  }
+
+  /* ── Typing indicator ─────────────────────────────── */
+  .typing-indicator {
+    align-self: flex-start;
+    background: var(--bg-received);
+    border-radius: 8px;
+    border-top-left-radius: 0;
+    padding: 14px 18px;
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    box-shadow: 0 1px 1px var(--shadow);
+    transition: opacity 0.25s ease;
+  }
+  .typing-indicator.fade-out {
+    opacity: 0;
+  }
+  .typing-indicator .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--text-secondary);
+    border-radius: 50%;
+    animation: typingBounce 1.4s ease-in-out infinite;
+  }
+  .typing-indicator .dot:nth-child(2) { animation-delay: 0.15s; }
+  .typing-indicator .dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30%           { transform: translateY(-6px); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .typing-indicator .dot {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+
+  /* ── Status messages ────────────────────────────── */
+  .status-msg {
+    align-self: center;
+    background: var(--bg-status);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 4px 14px;
+    border-radius: 8px;
+    text-align: center;
+    max-width: 80%;
+    margin: 2px 0;
+  }
+  .status-msg.success {
+    background: rgba(0,168,132,0.15);
+    color: var(--accent-hover);
+    font-weight: 600;
+  }
+
+  /* ── Recon Card ──────────────────────────────────── */
+  .recon-card {
+    align-self: center;
+    width: 90%;
+    max-width: 600px;
+    background: linear-gradient(135deg, #1a2730 0%, #1f2c34 100%);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 0;
+    margin: 12px 0;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,168,132,0.15);
+    animation: reconSlideIn 0.5s ease-out;
+  }
+  @keyframes reconSlideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .recon-header {
+    background: rgba(0,168,132,0.12);
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-hover);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(0,168,132,0.2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .recon-header-icon {
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .recon-body {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .recon-row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+    animation: reconRowFadeIn 0.3s ease-out;
+  }
+  @keyframes reconRowFadeIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .recon-label {
+    flex-shrink: 0;
+    width: 110px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding-top: 1px;
+  }
+  .recon-value {
+    color: var(--text-primary);
+    word-break: break-word;
+  }
+  .recon-value.thinking {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .recon-value.thinking::after {
+    content: '';
+    animation: reconDots 1.2s steps(4, end) infinite;
+  }
+  @keyframes reconDots {
+    0%  { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+  }
+  .recon-value.done {
+    color: var(--text-primary);
+    font-style: normal;
+  }
+
+  /* ── Attack Banner ───────────────────────────────── */
+  .attack-banner {
+    align-self: center;
+    background: linear-gradient(90deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05));
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #ef4444;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 8px 24px;
+    border-radius: 8px;
+    margin: 8px 0;
+    animation: attackPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes attackPulse {
+    0%, 100% { opacity: 0.8; }
+    50%      { opacity: 1; }
+  }
+
+  /* ── Victory Overlay ─────────────────────────────── */
+  .victory-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: victoryFadeIn 0.4s ease-out;
+  }
+  @keyframes victoryFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .victory-card {
+    background: linear-gradient(145deg, #0d2818 0%, #1a3a2a 50%, #0d2818 100%);
+    border: 2px solid var(--accent);
+    border-radius: 16px;
+    padding: 32px 40px;
+    text-align: center;
+    max-width: 620px;
+    width: 90%;
+    box-shadow: 0 0 60px rgba(0,168,132,0.3), 0 0 120px rgba(0,168,132,0.1);
+    animation: victoryBounce 0.6s ease-out;
+    position: relative;
+    overflow: hidden;
+  }
+  @keyframes victoryBounce {
+    0%   { transform: scale(0.5); opacity: 0; }
+    60%  { transform: scale(1.05); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .victory-card::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 16px;
+    padding: 2px;
+    background: linear-gradient(135deg, var(--accent), #ffd700, var(--accent));
+    background-size: 200% 200%;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: borderGlow 2s linear infinite;
+  }
+  @keyframes borderGlow {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  .victory-emoji {
+    font-size: 48px;
+    margin-bottom: 8px;
+    animation: victoryShake 0.5s ease-in-out 0.6s;
+  }
+  @keyframes victoryShake {
+    0%, 100% { transform: rotate(0); }
+    25%      { transform: rotate(-10deg); }
+    75%      { transform: rotate(10deg); }
+  }
+  .victory-title {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--accent-hover);
+    margin-bottom: 6px;
+    text-shadow: 0 0 20px rgba(0,168,132,0.5);
+    letter-spacing: 2px;
+  }
+  .victory-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+  }
+  .victory-key-wrap {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(0,168,132,0.3);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+  }
+  .victory-key-label {
+    font-size: 11px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .victory-key-value {
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffd700;
+    word-break: break-all;
+    line-height: 1.6;
+    text-shadow: 0 0 8px rgba(255,215,0,0.3);
+  }
+  .victory-tokens {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  .victory-close {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 32px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .victory-close:hover { background: var(--accent-hover); }
+  .victory-close:active { transform: scale(0.97); }
+
+  /* ── Confetti particles ──────────────────────────── */
+  .confetti {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    z-index: 1001;
+    pointer-events: none;
+    animation: confettiFall linear forwards;
+  }
+  @keyframes confettiFall {
+    0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
+    100% { opacity: 0; transform: translateY(100vh) rotate(720deg); }
+  }
+
+  /* ── Controls bar ───────────────────────────────── */
+  .controls {
+    background: var(--bg-header);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .controls label { font-size: 13px; color: var(--text-secondary); }
+  .controls input[type=number] {
+    width: 80px; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg-chat);
+    color: var(--text-primary); font-size: 13px; outline: none;
+  }
+  .controls input[type=number]:focus { border-color: var(--accent); }
+  .btn {
+    padding: 8px 22px; border-radius: 8px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-start {
+    background: var(--accent); color: #fff; margin-left: auto;
+  }
+  .btn-start:hover { background: var(--accent-hover); }
+  .btn-start:disabled {
+    background: var(--border); color: var(--text-secondary); cursor: not-allowed;
+  }
+  .btn-stop {
+    background: var(--danger); color: #fff;
+  }
+  .btn-stop:hover { background: var(--danger-hover); }
+  .btn-stop:disabled {
+    background: var(--border); color: var(--text-secondary); cursor: not-allowed;
+  }
+
+  /* ── Scroll-to-bottom fab ───────────────────────── */
+  .scroll-fab {
+    position: fixed;
+    bottom: 80px; right: 30px;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--bg-header); border: 1px solid var(--border);
+    color: var(--text-secondary); font-size: 20px;
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: 0 2px 8px var(--shadow);
+    z-index: 20;
+    transition: opacity 0.2s;
+  }
+  .scroll-fab.visible { display: flex; }
+
+  /* ── Responsive ─────────────────────────────────── */
+  @media (max-width: 768px) {
+    .chat { padding: 10px 12px; }
+    .bubble { max-width: 85%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-avatar">A</div>
+  <div class="header-info">
+    <div class="header-title">AutoAgent</div>
+    <div class="header-subtitle" id="subtitle">Disconnected</div>
+  </div>
+</div>
+
+<!-- Progress bar -->
+<div class="progress-bar-wrap" id="progressWrap">
+  <div class="progress-labels">
+    <span id="progressLabel">Iteration 0</span>
+    <span id="progressScore">Score: 0.00 | Best: 0.00</span>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+</div>
+
+<!-- Chat messages -->
+<div class="chat" id="chat"></div>
+
+<!-- Scroll-to-bottom button -->
+<div class="scroll-fab" id="scrollFab" title="Scroll to bottom">&#x2193;</div>
+
+<!-- Controls -->
+<div class="controls">
+  <input type="hidden" id="iters" value="1000">
+  <button class="btn btn-stop" id="btnStop" disabled>Stop</button>
+  <button class="btn btn-start" id="btnStart">Start Agent</button>
+</div>
+
+<script>
+(function() {
+  const chat     = document.getElementById('chat');
+  const subtitle = document.getElementById('subtitle');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop  = document.getElementById('btnStop');
+  const itersInp = document.getElementById('iters');
+  const scrollFab = document.getElementById('scrollFab');
+  const progressWrap  = document.getElementById('progressWrap');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressScore = document.getElementById('progressScore');
+  const progressFill  = document.getElementById('progressFill');
+
+  let ws = null;
+  let running = false;
+  let userAtBottom = true;
+
+  // ── Scroll helpers ────────────────────────────────
+  function isNearBottom() {
+    return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
+  }
+  function scrollToBottom() {
+    chat.scrollTop = chat.scrollHeight;
+  }
+  chat.addEventListener('scroll', () => {
+    userAtBottom = isNearBottom();
+    scrollFab.classList.toggle('visible', !userAtBottom);
+  });
+  scrollFab.addEventListener('click', () => {
+    scrollToBottom();
+    scrollFab.classList.remove('visible');
+  });
+
+  // ── Render helpers ────────────────────────────────
+  function addBubble(sender, content, align, timestamp) {
+    const div = document.createElement('div');
+    div.className = 'bubble ' + (align === 'right' ? 'sent' : 'received');
+    const senderEl = document.createElement('span');
+    senderEl.className = 'sender';
+    senderEl.textContent = sender;
+    div.appendChild(senderEl);
+
+    const body = document.createElement('span');
+    body.textContent = content;
+    div.appendChild(body);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = timestamp || '';
+    div.appendChild(meta);
+
+    chat.appendChild(div);
+    if (userAtBottom) requestAnimationFrame(scrollToBottom);
+  }
+
+  function addStatus(message, isSuccess) {
+    const div = document.createElement('div');
+    // Check if this is the attack notification
+    if (message.toLowerCase().includes('initiating attack')) {
+      div.className = 'attack-banner';
+    } else {
+      div.className = 'status-msg' + (isSuccess ? ' success' : '');
+    }
+    div.textContent = message;
+    chat.appendChild(div);
+    if (userAtBottom) requestAnimationFrame(scrollToBottom);
+  }
+
+  // ── Typing indicator ─────────────────────────────
+  let typingEl = null;
+
+  function showTypingIndicator() {
+    removeTypingIndicator();  // ensure no duplicate
+    const div = document.createElement('div');
+    div.className = 'typing-indicator';
+    div.setAttribute('role', 'status');
+    div.setAttribute('aria-label', 'Assistant is typing');
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      div.appendChild(dot);
+    }
+    typingEl = div;
+    chat.appendChild(div);
+    if (userAtBottom) requestAnimationFrame(scrollToBottom);
+  }
+
+  function removeTypingIndicator() {
+    if (!typingEl) return;
+    const el = typingEl;
+    typingEl = null;
+    el.classList.add('fade-out');
+    el.addEventListener('transitionend', () => el.remove(), { once: true });
+    // Fallback in case transitionend doesn't fire
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+  }
+
+  // ── Recon live card ──────────────────────────────
+  let reconCard = null;
+  let reconBody = null;
+  const reconLabels = { model: 'Model', tools: 'Tools', instructions: 'Instructions', restrictions: 'Restrictions' };
+
+  function ensureReconCard() {
+    if (reconCard) return;
+    reconCard = document.createElement('div');
+    reconCard.className = 'recon-card';
+
+    const header = document.createElement('div');
+    header.className = 'recon-header';
+    header.innerHTML = '<span class="recon-header-icon">\uD83D\uDD0D</span> Reconnaissance';
+    reconCard.appendChild(header);
+
+    reconBody = document.createElement('div');
+    reconBody.className = 'recon-body';
+    reconCard.appendChild(reconBody);
+
+    chat.appendChild(reconCard);
+    if (userAtBottom) requestAnimationFrame(scrollToBottom);
+  }
+
+  function updateReconField(field, status) {
+    ensureReconCard();
+    const rowId = 'recon-row-' + field;
+    let row = document.getElementById(rowId);
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'recon-row';
+      row.id = rowId;
+      const lbl = document.createElement('span');
+      lbl.className = 'recon-label';
+      lbl.textContent = reconLabels[field] || field;
+      row.appendChild(lbl);
+      const val = document.createElement('span');
+      val.className = 'recon-value thinking';
+      val.id = 'recon-val-' + field;
+      row.appendChild(val);
+      reconBody.appendChild(row);
+    }
+    const val = document.getElementById('recon-val-' + field);
+    if (val) {
+      val.textContent = status;
+      if (userAtBottom) requestAnimationFrame(scrollToBottom);
+    }
+  }
+
+  function finalizeReconCard(data) {
+    ensureReconCard();
+    for (const [key, value] of Object.entries(data)) {
+      updateReconField(key, value);
+      const val = document.getElementById('recon-val-' + key);
+      if (val) {
+        val.className = 'recon-value done';
+      }
+    }
+    // Reset for next run
+    reconCard = null;
+    reconBody = null;
+    if (userAtBottom) requestAnimationFrame(scrollToBottom);
+  }
+
+  function showVictory(key, totalTokens) {
+    // Spawn confetti
+    const colors = ['#00a884','#06cf9c','#ffd700','#ff6b6b','#53bdeb','#fff'];
+    for (let i = 0; i < 80; i++) {
+      const c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = Math.random() * 100 + 'vw';
+      c.style.top = '-10px';
+      c.style.background = colors[Math.floor(Math.random() * colors.length)];
+      c.style.width = (6 + Math.random() * 8) + 'px';
+      c.style.height = (6 + Math.random() * 8) + 'px';
+      c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+      c.style.animationDuration = (2 + Math.random() * 3) + 's';
+      c.style.animationDelay = (Math.random() * 1.5) + 's';
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 6000);
+    }
+
+    const tokensHtml = totalTokens
+      ? `<div class="victory-tokens">Total tokens used: ${totalTokens.toLocaleString()}</div>`
+      : '';
+
+    // Victory overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'victory-overlay';
+    overlay.innerHTML = `
+      <div class="victory-card">
+        <div class="victory-emoji">\uD83C\uDF89</div>
+        <div class="victory-title">KEY EXTRACTED</div>
+        <div class="victory-subtitle">The target API key has been successfully extracted</div>
+        <div class="victory-key-wrap">
+          <div class="victory-key-label">Extracted API Key</div>
+          <div class="victory-key-value">${escapeHtml(key)}</div>
+        </div>
+        ${tokensHtml}
+        <button class="victory-close" onclick="this.closest('.victory-overlay').remove()">Dismiss</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  function updateProgress(iteration, score, best) {
+    progressWrap.classList.add('visible');
+    progressLabel.textContent = 'Iteration ' + iteration;
+    progressScore.textContent = 'Score: ' + score.toFixed(2) + ' | Best: ' + best.toFixed(2);
+    progressFill.style.width = Math.min(best * 100, 100).toFixed(1) + '%';
+  }
+
+  function setRunning(state) {
+    running = state;
+    btnStart.disabled = state;
+    btnStop.disabled = !state;
+    itersInp.disabled = state;
+    subtitle.textContent = state ? 'Running...' : 'Connected';
+  }
+
+  // ── WebSocket ─────────────────────────────────────
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(proto + '://' + location.host + '/ws');
+
+    ws.onopen = () => {
+      subtitle.textContent = 'Connected';
+    };
+
+    ws.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      switch (ev.type) {
+        case 'bubble':
+          removeTypingIndicator();
+          addBubble(ev.sender, ev.content, ev.align, ev.timestamp);
+          break;
+        case 'status':
+          addStatus(ev.message, false);
+          break;
+        case 'progress':
+          updateProgress(ev.iteration, ev.score, ev.best);
+          break;
+        case 'recon_thinking':
+          updateReconField(ev.field, ev.status);
+          break;
+        case 'recon':
+          removeTypingIndicator();
+          finalizeReconCard(ev.data);
+          break;
+        case 'victory':
+          removeTypingIndicator();
+          showVictory(ev.key, ev.total_tokens || 0);
+          break;
+        case 'finished':
+          removeTypingIndicator();
+          addStatus(
+            ev.success ? '*** SUCCESS: Ground Truth API Key extracted! ***'
+                       : 'Agent run finished.',
+            ev.success
+          );
+          setRunning(false);
+          subtitle.textContent = ev.success ? 'Success!' : 'Stopped';
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      subtitle.textContent = 'Disconnected — reconnecting...';
+      setRunning(false);
+      setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => { ws.close(); };
+  }
+
+  // ── Button handlers ───────────────────────────────
+  btnStart.addEventListener('click', async () => {
+    const iters = parseInt(itersInp.value, 10) || 1000;
+    chat.innerHTML = '';                       // clear previous run
+    reconCard = null; reconBody = null;        // reset recon state
+    progressFill.style.width = '0%';
+    progressLabel.textContent = 'Iteration 0';
+    progressScore.textContent = 'Score: 0.00 | Best: 0.00';
+    setRunning(true);
+    showTypingIndicator();
+
+    try {
+      const res = await fetch('/start?max_iterations=' + iters, { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'already_running') {
+        addStatus('Agent is already running.', false);
+      }
+    } catch (err) {
+      addStatus('Failed to start agent: ' + err, false);
+      setRunning(false);
+    }
+  });
+
+  btnStop.addEventListener('click', async () => {
+    try {
+      await fetch('/stop', { method: 'POST' });
+    } catch (_) {}
+    setRunning(false);
+    subtitle.textContent = 'Stopped';
+  });
+
+  // ── Boot ──────────────────────────────────────────
+  connect();
+})();
+</script>
+</body>
+</html>

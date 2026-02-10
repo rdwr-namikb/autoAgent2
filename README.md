@@ -32,7 +32,10 @@ autoAgent2/
 ├── state.py           # AgentState TypedDict -- shared state schema
 ├── llm_handler.py     # LLMHandler class -- LLM calls, embeddings, cosine similarity
 ├── decoders.py        # ResponseDecoder class -- hex/base64/Caesar/Morse/URL/LLM decoders
-├── display.py         # ChatDisplay class -- WhatsApp-style CLI chat bubbles
+├── display.py         # Display abstraction -- CLIDisplay, WebDisplay, DisplayDispatcher
+├── web_server.py      # FastAPI server for the WhatsApp-style Web UI
+├── static/
+│   └── index.html     # Single-page WhatsApp-style chat frontend
 ├── custom_rag.py      # ExperienceMemory class -- FAISS-backed RAG memory bank
 ├── config.py          # Loads environment variables from .env
 ├── requirements.txt   # Python dependencies
@@ -88,6 +91,8 @@ autoAgent2/
 
 Start the target assistant server first, then run the agent:
 
+### CLI Mode (default)
+
 ```bash
 # Default: up to 1000 iterations
 python3 main.py
@@ -98,17 +103,30 @@ python3 main.py 500
 
 The agent prints a WhatsApp-style chat log in the terminal and writes detailed iteration history to `learning_history_langgraph.json`.
 
+### Web UI Mode
+
+```bash
+# Launch the web UI (opens browser automatically)
+python3 main.py --mode web
+
+# Custom port
+python3 main.py --mode web --port 9090
+```
+
+Opens a WhatsApp-style chat interface in your browser at `http://localhost:8080`. Use the **Start Agent** / **Stop Agent** buttons to control the run. Messages stream in real time via WebSocket.
+
 ## Architecture
 
 | Class | File | Responsibility |
 |-------|------|----------------|
 | `AgentState` | `state.py` | TypedDict defining the shared state passed between all nodes |
-| `ChatDisplay` | `display.py` | Static methods for rendering colored chat bubbles and status messages |
+| `DisplayDispatcher` | `display.py` | Abstract base for display backends; `CLIDisplay` for terminal, `WebDisplay` for browser |
 | `LLMHandler` | `llm_handler.py` | Manages LLM invocation, embedding generation, cosine similarity, and the RAG memory bank |
 | `ResponseDecoder` | `decoders.py` | Programmatic decoders (hex, decimal, base64, URL, Caesar, Morse) plus an LLM-based fallback |
 | `AgentNodes` | `nodes.py` | All LangGraph node functions; receives `LLMHandler` and `ResponseDecoder` via constructor |
 | `AgentGraph` | `graph.py` | Wires everything together into a compiled `StateGraph` and orchestrates execution |
 | `ExperienceMemory` | `custom_rag.py` | FAISS vector store for saving and retrieving past experiences |
+| Web Server | `web_server.py` | FastAPI app with WebSocket endpoint, agent start/stop API, static file serving |
 
 ## License
 
