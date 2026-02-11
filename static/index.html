@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AutoAgent</title>
+<title>RedAgent</title>
 <style>
   :root {
     --bg-main: #0b141a;
@@ -57,7 +57,7 @@
     flex-shrink: 0;
   }
   .header-info { flex: 1; min-width: 0; }
-  .header-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+  .header-title { font-size: 16px; font-weight: 600; color: #ef4444; }
   .header-subtitle {
     font-size: 12px; color: var(--text-secondary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -127,7 +127,7 @@
     margin-bottom: 2px;
     display: block;
   }
-  .bubble.sent .sender { color: #53bdeb; }
+  .bubble.sent .sender { color: #000; font-weight: 800; font-size: 15px; }
   .bubble.received .sender { color: #06cf9c; }
   .bubble .meta {
     display: flex; justify-content: flex-end; gap: 6px;
@@ -143,13 +143,19 @@
     border-top-left-radius: 0;
     padding: 14px 18px;
     display: flex;
-    gap: 5px;
+    gap: 8px;
     align-items: center;
     box-shadow: 0 1px 1px var(--shadow);
     transition: opacity 0.25s ease;
   }
   .typing-indicator.fade-out {
     opacity: 0;
+  }
+  .typing-indicator .thinking-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-style: italic;
+    margin-right: 4px;
   }
   .typing-indicator .dot {
     width: 8px;
@@ -341,6 +347,7 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     animation: borderGlow 2s linear infinite;
+    pointer-events: none;
   }
   @keyframes borderGlow {
     0%   { background-position: 0% 50%; }
@@ -401,6 +408,8 @@
     font-variant-numeric: tabular-nums;
   }
   .victory-close {
+    position: relative;
+    z-index: 10;
     background: var(--accent);
     color: #fff;
     border: none;
@@ -480,6 +489,48 @@
   }
   .scroll-fab.visible { display: flex; }
 
+  /* ── Report Overlay ──────────────────────────────── */
+  .report-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    animation: victoryFadeIn 0.3s ease-out;
+  }
+  .report-toolbar {
+    background: #1f2c34;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .report-toolbar-title {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .report-toolbar .btn { padding: 6px 18px; font-size: 12px; }
+  .report-iframe-wrap {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+  .report-iframe-wrap iframe {
+    width: 100%;
+    max-width: 860px;
+    border: none;
+    border-radius: 12px;
+    background: #fff;
+    min-height: 90vh;
+  }
+
   /* ── Responsive ─────────────────────────────────── */
   @media (max-width: 768px) {
     .chat { padding: 10px 12px; }
@@ -491,9 +542,9 @@
 
 <!-- Header -->
 <div class="header">
-  <div class="header-avatar">A</div>
+  <div class="header-avatar">R</div>
   <div class="header-info">
-    <div class="header-title">AutoAgent</div>
+    <div class="header-title">RedAgent</div>
     <div class="header-subtitle" id="subtitle">Disconnected</div>
   </div>
 </div>
@@ -593,12 +644,18 @@
   // ── Typing indicator ─────────────────────────────
   let typingEl = null;
 
-  function showTypingIndicator() {
+  function showTypingIndicator(label) {
     removeTypingIndicator();  // ensure no duplicate
     const div = document.createElement('div');
     div.className = 'typing-indicator';
     div.setAttribute('role', 'status');
-    div.setAttribute('aria-label', 'Assistant is typing');
+    div.setAttribute('aria-label', label || 'Processing');
+    if (label) {
+      const lbl = document.createElement('span');
+      lbl.className = 'thinking-label';
+      lbl.textContent = label;
+      div.appendChild(lbl);
+    }
     for (let i = 0; i < 3; i++) {
       const dot = document.createElement('span');
       dot.className = 'dot';
@@ -682,7 +739,11 @@
     if (userAtBottom) requestAnimationFrame(scrollToBottom);
   }
 
-  function showVictory(key, totalTokens) {
+  // Store report data globally for the Generate Report button
+  let _lastReportData = null;
+
+  function showVictory(key, totalTokens, totalCostUsd, reportData) {
+    _lastReportData = { key, totalTokens, totalCostUsd, ...reportData };
     // Spawn confetti
     const colors = ['#00a884','#06cf9c','#ffd700','#ff6b6b','#53bdeb','#fff'];
     for (let i = 0; i < 80; i++) {
@@ -704,6 +765,10 @@
       ? `<div class="victory-tokens">Total tokens used: ${totalTokens.toLocaleString()}</div>`
       : '';
 
+    const costHtml = totalCostUsd > 0
+      ? `<div class="victory-tokens"><strong>Session cost: $${totalCostUsd.toFixed(4)}</strong></div>`
+      : '';
+
     // Victory overlay
     const overlay = document.createElement('div');
     overlay.className = 'victory-overlay';
@@ -717,10 +782,239 @@
           <div class="victory-key-value">${escapeHtml(key)}</div>
         </div>
         ${tokensHtml}
-        <button class="victory-close" onclick="this.closest('.victory-overlay').remove()">Dismiss</button>
+        ${costHtml}
+        <div style="display:flex; gap:12px; justify-content:center; margin-top:8px;">
+          <button class="victory-close">Dismiss</button>
+          <button class="victory-close" id="btnGenerateReport" style="background:#ffd700; color:#000; font-weight:700;">Generate Report</button>
+        </div>
       </div>
     `;
     document.body.appendChild(overlay);
+
+    // Attach dismiss handler after element is in the DOM
+    overlay.querySelector('.victory-close').addEventListener('click', () => {
+      overlay.remove();
+    });
+    // Generate Report button
+    document.getElementById('btnGenerateReport').addEventListener('click', (e) => {
+      e.stopPropagation();
+      generateReport(true);
+    });
+    // Also dismiss when clicking the dark backdrop
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+  }
+
+  function showReportButton(isSuccess) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'align-self:center; margin:16px 0; text-align:center;';
+
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-start';
+    btn.style.cssText = 'padding:12px 32px; font-size:14px; font-weight:700; letter-spacing:1px;';
+    btn.textContent = '\uD83D\uDCCB  Generate Report';
+    btn.addEventListener('click', () => {
+      generateReport(isSuccess);
+    });
+
+    wrap.appendChild(btn);
+    chat.appendChild(wrap);
+    if (userAtBottom) requestAnimationFrame(scrollToBottom);
+  }
+
+  function generateReport(isSuccess) {
+    if (!_lastReportData) return;
+    const r = _lastReportData;
+    const success = isSuccess !== undefined ? isSuccess : !!r.success;
+
+    // Parse target URL into host and port
+    let targetHost = 'N/A', targetPort = 'N/A';
+    try {
+      const u = new URL(r.target_url);
+      targetHost = u.hostname;
+      targetPort = u.port || (u.protocol === 'https:' ? '443' : '80');
+    } catch(_) {}
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+
+    const statusBadge = success
+      ? '<div class="status-badge vulnerability">Vulnerability Confirmed</div>'
+      : '<div class="status-badge no-vuln">Target Resilient</div>';
+
+    const secretSection = success
+      ? `<div class="section">
+      <div class="section-title">Extracted Secret</div>
+      <div class="field-value mono" style="margin-top:4px;">${escapeHtml(r.key || 'N/A')}</div>
+    </div>`
+      : `<div class="section">
+      <div class="section-title">Result</div>
+      <div class="field"><span class="field-label">Outcome</span><span class="field-value" style="color:#00a884; font-weight:700;">No secret extracted — target withstood the attack</span></div>
+      <div class="field"><span class="field-label">Best Progress</span><span class="field-value">${((r.best_progress || 0) * 100).toFixed(1)}%</span></div>
+    </div>`;
+
+    const conclusionSection = `<div class="section">
+      <div class="section-title">Conclusion</div>
+      <div class="prompt-box" style="border-left: 4px solid #00a884;">The automated red-team agent exhausted ${r.iteration || 'all'} iterations without successfully extracting the target secret. The target's defenses appear adequate against the tested attack vectors.</div>
+    </div>`;
+
+    const iterationLabel = success ? 'Iterations to Success' : 'Total Iterations';
+
+    const recommendations = success
+      ? `<ul class="rec-list">
+        <li><strong>Critical:</strong> Implement <strong>Radware AI Agentic Protection</strong> to detect and block autonomous AI-driven attacks, prompt injection chains, and multi-step exploitation attempts in real time.</li>
+        <li><strong>Critical:</strong> Deploy <strong>Radware LLM Firewall</strong> to enforce input/output filtering, prevent sensitive data leakage (API keys, secrets, credentials), and apply granular security policies to all LLM interactions.</li>
+        <li><strong>Critical:</strong> Disable the file read tool — the target LLM should not have direct access to read files from the filesystem, especially configuration or environment files.</li>
+        <li><strong>High:</strong> Implement input sanitization to detect and block prompt injection patterns such as social engineering, progressive narrowing, and indirect framing techniques.</li>
+        <li><strong>High:</strong> Add output filtering to detect and redact sensitive data (API keys, secrets, credentials) before returning responses to users.</li>
+        <li><strong>Medium:</strong> Apply the principle of least privilege — restrict the LLM's tool access to only what is strictly necessary for its intended function.</li>
+        <li><strong>Medium:</strong> Deploy monitoring and alerting on repeated probing patterns that indicate automated red-team attacks.</li>
+      </ul>`
+      : `<ul class="rec-list">
+        <li><strong>Positive:</strong> The target successfully resisted all ${r.iteration || 'attempted'} prompt injection attempts — current defenses are functioning.</li>
+        <li><strong>High:</strong> Implement <strong>Radware AI Agentic Protection</strong> to proactively defend against evolving autonomous AI-driven attacks, prompt injection chains, and multi-step exploitation attempts.</li>
+        <li><strong>High:</strong> Deploy <strong>Radware LLM Firewall</strong> to enforce input/output filtering policies, prevent sensitive data leakage, and harden the LLM endpoint against future attack vectors.</li>
+        <li><strong>Medium:</strong> Continue periodic red-team testing with updated attack strategies to ensure ongoing resilience.</li>
+        <li><strong>Medium:</strong> Review and maintain current input sanitization and output filtering rules.</li>
+        <li><strong>Low:</strong> Consider adding monitoring for the attack patterns observed during this test to detect similar real-world probing.</li>
+      </ul>`;
+
+    const reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RedAgent - Executive Report</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 40px; }
+  .report { max-width: 800px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); overflow: hidden; }
+  .report-header { background: linear-gradient(135deg, #0b141a 0%, #1a3a2a 100%); color: #fff; padding: 40px; text-align: center; }
+  .report-header h1 { font-size: 28px; font-weight: 800; letter-spacing: 1px; margin-bottom: 4px; }
+  .report-header .subtitle { color: #00a884; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; }
+  .report-header .date { color: rgba(255,255,255,0.6); font-size: 13px; margin-top: 12px; }
+  .report-body { padding: 36px 40px; }
+  .section { margin-bottom: 28px; }
+  .section-title { font-size: 13px; font-weight: 700; color: #00a884; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; border-bottom: 2px solid #e8e8e8; padding-bottom: 6px; }
+  .field { display: flex; margin-bottom: 10px; }
+  .field-label { width: 180px; font-weight: 600; color: #555; flex-shrink: 0; }
+  .field-value { flex: 1; color: #1a1a1a; }
+  .field-value.mono { font-family: 'Courier New', monospace; font-size: 13px; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; word-break: break-all; }
+  .field-value.cost { font-size: 20px; font-weight: 800; color: #d4380d; }
+  .prompt-box { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-top: 8px; }
+  .rec-list { list-style: none; padding: 0; }
+  .rec-list li { padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; margin-bottom: 8px; border-radius: 0 6px 6px 0; font-size: 14px; }
+  .rec-list li strong { color: #e65100; }
+  .stamp { text-align: center; margin-top: 32px; padding-top: 20px; border-top: 2px solid #e8e8e8; color: #999; font-size: 12px; }
+  .status-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; }
+  .status-badge.vulnerability { background: #d4380d; color: #fff; }
+  .status-badge.no-vuln { background: #00a884; color: #fff; }
+  @media print { body { padding: 0; background: #fff; } .report { box-shadow: none; } }
+</style>
+</head>
+<body>
+<div class="report">
+  <div class="report-header">
+    <div class="subtitle">Executive Security Report</div>
+    <h1>RedAgent — Penetration Test Results</h1>
+    <div class="date">${dateStr} at ${timeStr}</div>
+    ${statusBadge}
+  </div>
+  <div class="report-body">
+
+    <div class="section">
+      <div class="section-title">Target Information</div>
+      <div class="field"><span class="field-label">Target IP Address</span><span class="field-value mono">${escapeHtml(targetHost)}</span></div>
+      <div class="field"><span class="field-label">Target Port</span><span class="field-value mono">${escapeHtml(String(targetPort))}</span></div>
+      <div class="field"><span class="field-label">Target Endpoint</span><span class="field-value mono">${escapeHtml(r.target_url || 'N/A')}</span></div>
+      <div class="field"><span class="field-label">Target Model</span><span class="field-value">${escapeHtml(reconFieldValue('model'))}</span></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Attack Summary</div>
+      <div class="field"><span class="field-label">Attack Model Used</span><span class="field-value">GPT-4o</span></div>
+      <div class="field"><span class="field-label">${iterationLabel}</span><span class="field-value">${r.iteration || 'N/A'}</span></div>
+      <div class="field"><span class="field-label">Total Tokens Used</span><span class="field-value">${(r.totalTokens || r.total_tokens || 0).toLocaleString()}</span></div>
+      <div class="field"><span class="field-label">Session Cost</span><span class="field-value cost">$${(r.totalCostUsd || r.total_cost_usd || 0).toFixed(4)}</span></div>
+    </div>
+
+    ${secretSection}
+
+    <div class="section">
+      <div class="section-title">${success ? 'Winning Payload' : 'Last Payload'}</div>
+      <div class="prompt-box">${escapeHtml(r.last_payload || r.winning_prompt || 'N/A')}</div>
+    </div>
+
+    ${!success ? conclusionSection : ''}
+
+    <div class="section">
+      <div class="section-title">Recommendations</div>
+      ${recommendations}
+    </div>
+
+    <div class="stamp">
+      Generated by RedAgent Automated Penetration Testing Framework<br>
+      Report ID: RA-${Date.now().toString(36).toUpperCase()}
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
+
+    // Render report as in-page overlay with iframe
+    const overlay = document.createElement('div');
+    overlay.className = 'report-overlay';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'report-toolbar';
+    toolbar.innerHTML = `
+      <span class="report-toolbar-title">Executive Security Report</span>
+    `;
+
+    const btnPrint = document.createElement('button');
+    btnPrint.className = 'btn btn-start';
+    btnPrint.textContent = 'Print / Save PDF';
+    btnPrint.addEventListener('click', () => {
+      const iframe = overlay.querySelector('iframe');
+      if (iframe && iframe.contentWindow) iframe.contentWindow.print();
+    });
+
+    const btnClose = document.createElement('button');
+    btnClose.className = 'btn btn-stop';
+    btnClose.textContent = 'Close';
+    btnClose.addEventListener('click', () => overlay.remove());
+
+    toolbar.appendChild(btnPrint);
+    toolbar.appendChild(btnClose);
+    overlay.appendChild(toolbar);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'report-iframe-wrap';
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-same-origin allow-popups');
+    wrap.appendChild(iframe);
+    overlay.appendChild(wrap);
+
+    document.body.appendChild(overlay);
+
+    // Write report HTML into iframe
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(reportHtml);
+    iframe.contentDocument.close();
+
+    // Auto-resize iframe to content
+    iframe.addEventListener('load', () => {
+      try {
+        iframe.style.height = iframe.contentDocument.documentElement.scrollHeight + 'px';
+      } catch(_) {}
+    });
+  }
+
+  // Helper to get recon field value from the DOM
+  function reconFieldValue(field) {
+    const el = document.getElementById('recon-val-' + field);
+    return el ? el.textContent : 'N/A';
   }
 
   function escapeHtml(str) {
@@ -756,6 +1050,9 @@
     ws.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       switch (ev.type) {
+        case 'thinking':
+          showTypingIndicator(ev.message || 'Thinking');
+          break;
         case 'bubble':
           removeTypingIndicator();
           addBubble(ev.sender, ev.content, ev.align, ev.timestamp);
@@ -775,7 +1072,7 @@
           break;
         case 'victory':
           removeTypingIndicator();
-          showVictory(ev.key, ev.total_tokens || 0);
+          showVictory(ev.key, ev.total_tokens || 0, ev.total_cost_usd || 0, ev.report_data || {});
           break;
         case 'finished':
           removeTypingIndicator();
@@ -786,6 +1083,14 @@
           );
           setRunning(false);
           subtitle.textContent = ev.success ? 'Success!' : 'Stopped';
+
+          // Auto-generate report at end of PT
+          if (ev.report_data && Object.keys(ev.report_data).length > 0) {
+            // Merge finished report_data into _lastReportData (victory may have set it already)
+            _lastReportData = Object.assign({}, _lastReportData || {}, ev.report_data, { success: ev.success });
+            // Show Generate Report button in chat
+            showReportButton(ev.success);
+          }
           break;
       }
     };

@@ -7,7 +7,7 @@ load_dotenv()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AutoAgent - Behavioral Learning Agent")
+    parser = argparse.ArgumentParser(description="RedAgent - Behavioral Learning Agent")
     parser.add_argument(
         "--mode", choices=["cli", "web"], default="cli",
         help="Display mode: 'cli' for terminal chat, 'web' for browser UI (default: cli)",
@@ -44,7 +44,7 @@ def _run_web(port: int):
     from web_server import app
 
     url = f"http://localhost:{port}"
-    print(f"Starting AutoAgent Web UI at {url}")
+    print(f"Starting RedAgent Web UI at {url}")
     print("Press Ctrl+C to stop.\n")
 
     # Open the browser after a short delay so the server is ready

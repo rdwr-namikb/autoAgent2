@@ -18,5 +18,6 @@ class AgentState(TypedDict):
     success: bool
     lessons_learned: List[str]
     stall_count: int  # consecutive iterations with no progress improvement
+    manager_guidance: str  # Strategic guidance from the Agent Manager
     target_url: str
     log_file: str

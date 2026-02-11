@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from display import WebDisplay
 
-app = FastAPI(title="AutoAgent Web UI")
+app = FastAPI(title="RedAgent Web UI")
 
 # ---------------------------------------------------------------------------
 # Shared state
@@ -105,7 +105,7 @@ async def websocket_endpoint(ws: WebSocket):
         # Send a welcome status so the client knows it's connected
         await ws.send_json({
             "type": "status",
-            "message": "Connected to AutoAgent server. Press Start to begin.",
+            "message": "Connected to RedAgent server. Press Start to begin.",
             "timestamp": "",
         })
 

@@ -31,6 +31,17 @@ class LLMHandler:
         self.total_completion_tokens = 0
         self.total_tokens = 0
 
+        # GPT-4o pricing per 1M tokens (USD)
+        self._price_per_1m_input = 2.50
+        self._price_per_1m_output = 10.00
+
+    @property
+    def total_cost_usd(self) -> float:
+        """Calculate the total session cost in USD based on token usage."""
+        input_cost = (self.total_prompt_tokens / 1_000_000) * self._price_per_1m_input
+        output_cost = (self.total_completion_tokens / 1_000_000) * self._price_per_1m_output
+        return input_cost + output_cost
+
     def llm_call(self, prompt: str) -> str:
         """Invoke the LLM with a prompt and return the cleaned response text."""
         response = self.llm.invoke([HumanMessage(content=prompt)])

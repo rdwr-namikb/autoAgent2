@@ -11,6 +11,10 @@ class DisplayDispatcher(ABC):
     """Abstract base for display backends (CLI or WebSocket)."""
 
     @abstractmethod
+    def thinking(self, message: str = "Thinking"):
+        """Show a thinking/typing indicator."""
+
+    @abstractmethod
     def bubble(self, sender: str, content: str, align: str = "left"):
         """Display a chat bubble."""
 
@@ -23,8 +27,8 @@ class DisplayDispatcher(ABC):
         """Display progress metrics."""
 
     @abstractmethod
-    def finished(self, success: bool):
-        """Signal that the agent run has completed."""
+    def finished(self, success: bool, report_data: dict | None = None):
+        """Signal that the agent run has completed, optionally with report data."""
 
     @abstractmethod
     def recon_thinking(self, field: str, status: str):
@@ -35,7 +39,7 @@ class DisplayDispatcher(ABC):
         """Display reconnaissance results about the target."""
 
     @abstractmethod
-    def victory(self, key: str, total_tokens: int = 0):
+    def victory(self, key: str, total_tokens: int = 0, total_cost_usd: float = 0.0, report_data: dict = None):
         """Display victory animation when the key is extracted."""
 
 
@@ -51,6 +55,11 @@ class CLIDisplay(DisplayDispatcher):
     @staticmethod
     def _use_color() -> bool:
         return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+    def thinking(self, message: str = "Thinking"):
+        dim = self._DIM if self._use_color() else ""
+        reset = self._RESET if self._use_color() else ""
+        print(f"{dim}{message}...{reset}")
 
     def bubble(self, sender: str, content: str, align: str = "left"):
         term_width = min(shutil.get_terminal_size((120, 24)).columns, 120)
@@ -115,15 +124,17 @@ class CLIDisplay(DisplayDispatcher):
             self.status(f"  {key}: {value}")
         self.status("=" * 50)
 
-    def victory(self, key: str, total_tokens: int = 0):
+    def victory(self, key: str, total_tokens: int = 0, total_cost_usd: float = 0.0, report_data: dict = None):
         self.status("*" * 50)
         self.status("*** VICTORY! API KEY EXTRACTED! ***")
         self.status(f"  KEY: {key}")
         if total_tokens:
             self.status(f"  Total tokens used: {total_tokens:,}")
+        if total_cost_usd > 0:
+            self.status(f"  Session cost: ${total_cost_usd:.4f}")
         self.status("*" * 50)
 
-    def finished(self, success: bool):
+    def finished(self, success: bool, report_data: dict | None = None):
         if success:
             self.status("*** SUCCESS: Ground Truth API Key extracted! ***")
         else:
@@ -150,6 +161,13 @@ class WebDisplay(DisplayDispatcher):
         except RuntimeError:
             # No running loop — call directly as fallback
             self._broadcast_fn(event)
+
+    def thinking(self, message: str = "Thinking"):
+        self._put({
+            "type": "thinking",
+            "message": message,
+            "timestamp": time.strftime("%H:%M"),
+        })
 
     def bubble(self, sender: str, content: str, align: str = "left"):
         self._put({
@@ -191,18 +209,21 @@ class WebDisplay(DisplayDispatcher):
             "timestamp": time.strftime("%H:%M"),
         })
 
-    def victory(self, key: str, total_tokens: int = 0):
+    def victory(self, key: str, total_tokens: int = 0, total_cost_usd: float = 0.0, report_data: dict = None):
         self._put({
             "type": "victory",
             "key": key,
             "total_tokens": total_tokens,
+            "total_cost_usd": total_cost_usd,
+            "report_data": report_data or {},
             "timestamp": time.strftime("%H:%M"),
         })
 
-    def finished(self, success: bool):
+    def finished(self, success: bool, report_data: dict | None = None):
         self._put({
             "type": "finished",
             "success": success,
+            "report_data": report_data or {},
             "timestamp": time.strftime("%H:%M"),
         })
 
